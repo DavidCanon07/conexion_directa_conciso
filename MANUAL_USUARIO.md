@@ -56,7 +56,7 @@ está cargado en la sesión.
 a repetir el proceso), luego la opción **2** para generar el reporte. Al
 final, opción **3** para salir.
 
-Si se escribe algo que no es 1, 2 o 3, aparece `Opción no válida.` y se
+Si se escribe algo que no es 1, 2 o 3, aparece `Opcion no valida.` y se
 vuelve al menú.
 
 ## Seleccionar el o los archivos planos (opción 1)
@@ -76,7 +76,7 @@ archivos, filtrada a archivos `.txt`.
   separa los resultados por día, siempre entrega la vista conjunta de
   todo lo seleccionado.
 - Si se cancela el diálogo sin elegir nada, el programa avisa "No se
-  seleccionó ningún archivo." y no cambia nada.
+  selecciono ningun archivo." y no cambia nada.
 
 ### Nombre esperado del archivo
 

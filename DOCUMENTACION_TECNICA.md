@@ -434,14 +434,13 @@ separado el tiempo de `construir_dataframe` (parseo) y de `generar_reporte`
 (reglas de negocio).
 
 **Resultado medido con 1,000,000 de filas**: parseo (`construir_dataframe`)
-2.84s, reglas de negocio (`generar_reporte`) 2.22s, **total 5.07s**. Una
-corrida adicional en esta misma sesión de documentación reprodujo el mismo
-total (5.07s, con 3.11s/1.96s en el desglose parseo/reglas) — la variación
-entre parseo y reglas de una corrida a otra es ruido normal de máquina, el
-total se mantiene estable y confirma que el pipeline completo procesa 1
-millón de filas en poco más de 5 segundos, sin loops en Python fila por
-fila en ninguna etapa (ni en el parseo por comprensión de listas/dicts, ni
-en las reglas vectorizadas de pandas).
+2.84s, reglas de negocio (`generar_reporte`) 2.22s, **total 5.07s**. El
+tiempo total varía con la carga de la máquina en la que se ejecute (E/S en
+disco, otros procesos activos, etc.), pero el pipeline completo sigue sin
+usar loops en Python fila por fila en ninguna etapa (ni en el parseo por
+comprensión de listas/dicts, ni en las reglas vectorizadas de pandas), lo
+cual es lo que permite procesar 1 millón de filas en el orden de segundos
+en vez de minutos.
 
 ## 10. Convenciones y decisiones de diseño no obvias
 
