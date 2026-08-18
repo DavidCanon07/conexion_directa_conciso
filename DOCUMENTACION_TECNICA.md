@@ -13,7 +13,7 @@ Bucle de menú (`while True` en `main.py`) sin clases, con un único estado de
 sesión en memoria:
 
 ```python
-estado = {"rutas": [], "df": None}
+estado = {"rutas": []}
 ```
 
 Grafo de dependencias entre módulos:
@@ -255,6 +255,17 @@ absoluto de monto son candidatas a pareja, sin importar si su signo real
 coincide en la práctica — lo que importa es que una esté en el lado
 negativo y otra en el lado positivo.
 
+> **Nota sobre el archivo real de producción**: en la muestra real
+> (`GOF.GRB.FM14.F260813.txt` / `F260814.txt`), `NUMERO-TARJETA` viene
+> **enmascarado a un único valor constante en todas las filas** — no
+> discrimina nada en la práctica. Esto significa que, sobre el archivo
+> real, la llave de emparejamiento funciona efectivamente solo con
+> `NUMERO -APROBACION` + `abs(MONTO-1)`; se verificó que esto es seguro
+> en la muestra (los números de aprobación son casi únicos: 2406 de 2417
+> distintos, repetición máxima de 2), pero conviene tenerlo presente para
+> no asumir que el componente de tarjeta aporta poder de discriminación
+> real sobre el feed de producción actual.
+
 **Por qué `groupby().cumcount()` + `merge` en vez de un loop**:
 
 1. El DataFrame se separa en dos mitades por signo: `negativos` (`MONTO-1 <
@@ -396,14 +407,16 @@ existe), con la fecha del sistema en el nombre. `CARPETA_SALIDA` y
 
 Resto: módulos estándar (`pathlib`, `datetime`, `re`, `typing`, `functools`,
 `logging`, `os`, `random`, `time`, `sys` — los tres últimos solo en
-`scripts/benchmark_rendimiento.py`). No existe `requirements.txt` ni
-`pyproject.toml` en la raíz — `pandas`, `openpyxl` y `pytest` deben
-instalarse manualmente en el entorno Python que ejecuta el programa
-(`tkinter` viene con la instalación estándar de Python en Windows).
+`scripts/benchmark_rendimiento.py`). Existe `requirements.txt` en la raíz
+con las tres dependencias externas (`pandas`, `openpyxl`, `pytest`), con
+límites de versión (`pandas>=2,<4`, `openpyxl>=3,<4`, `pytest>=7,<10`);
+se instalan con `pip install -r requirements.txt` en el entorno Python
+que ejecuta el programa (`tkinter` viene con la instalación estándar de
+Python en Windows). No existe `pyproject.toml`.
 
 ## 8. Pruebas automatizadas (`tests/`)
 
-Suite de **26 pruebas** con `pytest`, sin dependencias externas de red ni
+Suite de **29 pruebas** con `pytest`, sin dependencias externas de red ni
 archivos fijos:
 
 | Archivo | Pruebas | Cubre |
@@ -412,10 +425,10 @@ archivos fijos:
 | `test_utils.py` | 3 | `manejar_errores` (captura de las 4 ramas de excepción, retorno `None`) |
 | `test_validador.py` | 2 | `extraer_dia` (patrón `FYYMMDD` y fallback interactivo) |
 | `test_reglas_filtro.py` | 7 | `_convertir_monto`, `_filtrar_ep` (cada condición del filtro y la negativización, por separado) |
-| `test_reglas_efecto_cero.py` | 5 | `_detectar_efecto_cero`: pareja simple, sin pareja, multiplicidad (1 a 1 con llaves duplicadas), monto cero, llave distinta |
-| `test_reglas_integracion.py` | 4 | `generar_reporte` de punta a punta: 3 hojas con los nombres esperados, separación por RED-LOGICA, retiro de parejas de efecto cero de la hoja VISA, columna `"__dia"` descartada del resultado |
+| `test_reglas_efecto_cero.py` | 6 | `_detectar_efecto_cero`: pareja simple, sin pareja, multiplicidad (1 a 1 con llaves duplicadas), monto cero, llave distinta, y (agregada en la revisión final) preservación del orden del llamador con tarjetas intercaladas (regresión de `sorted(indices_pareja)` → `df.index.isin(indices_pareja)`) |
+| `test_reglas_integracion.py` | 6 | `generar_reporte` de punta a punta: 3 hojas con los nombres esperados, separación por RED-LOGICA, retiro de parejas de efecto cero de la hoja VISA, columna `"__dia"` descartada del resultado, y (agregadas en la revisión final) `ValueError` cuando falta una columna requerida — probado tanto contra la función sin decorar (`generar_reporte.__wrapped__`) como contra la API pública decorada (`None` + mensaje `"[!] Error de datos o configuracion"`) |
 | `test_exportador.py` | 2 | `guardar_con_formato`: hoja normal y hoja vacía (con advertencia) |
-| `test_main_integracion.py` | 1 | Flujo completo desde un archivo plano temporal hasta un `.xlsx` de 3 hojas, incluyendo `"EFECTO CERO"` |
+| `test_main_integracion.py` | 1 | Flujo completo desde un archivo plano temporal hasta un `.xlsx` de 3 hojas, incluyendo `"EFECTO CERO"` (usa `monkeypatch` sobre `main.REPORTE_EP` para no escribir sobre el archivo real de `salidas/`) |
 
 `tests/conftest.py` expone `construir_linea(valores, longitud_total=560)`,
 un helper que construye una línea de archivo plano de prueba colocando cada
@@ -423,7 +436,7 @@ valor en su posición exacta según `LAYOUT` — reutilizado también por
 `scripts/benchmark_rendimiento.py` para generar datos sintéticos.
 
 Ejecución: `pytest tests/ -v` (o `pytest tests/ -q`) desde la raíz del
-proyecto. Estado actual: **26 passed**.
+proyecto. Estado actual: **29 passed**.
 
 ## 9. Rendimiento (`scripts/benchmark_rendimiento.py`)
 
@@ -459,11 +472,21 @@ en vez de minutos.
 - **Valores de `RED-LOGICA` hardcodeados como literales `"0911"` y
   `"VISA"`** en las dos llamadas a `_filtrar_ep` dentro de
   `generar_reporte` — no vienen de `config.py` (ver "Posibles mejoras").
-- **`_filtrar_ep` usa `.get(..., pd.Series(dtype=str))`** para cada
-  columna en vez de indexar directo (`df["RED-LOGICA"]`): si el DataFrame
-  de entrada no trajera esa columna (por ejemplo un archivo plano con
-  líneas más cortas de lo esperado), la condición se evalúa contra una
-  Serie vacía en vez de lanzar `KeyError`.
+- **`generar_reporte` valida al inicio que todas las columnas requeridas
+  esten presentes en `df`** (constante `COLUMNAS_REQUERIDAS` en
+  `reglas.py`: las 10 columnas que usan `_filtrar_ep` y
+  `_detectar_efecto_cero`) y lanza `ValueError` con los nombres faltantes
+  si no — este es el mecanismo de seguridad principal contra un DataFrame
+  incompleto. `_filtrar_ep` sigue usando `.get(..., pd.Series(dtype=str))`
+  para cada columna en vez de indexar directo (`df["RED-LOGICA"]`), pero
+  ahora es solo defensa en profundidad (por ejemplo si a futuro se llama a
+  `_filtrar_ep` directamente sin pasar por la validación de
+  `generar_reporte`): dado que la validación de entrada ya garantiza que
+  las columnas existen, la rama de "Serie vacía" de `.get()` no debería
+  activarse en el flujo normal. Antes de este cambio, una columna
+  faltante producía silenciosamente un reporte de 0 filas con un falso
+  `[OK]` — el peor modo de fallo posible para una herramienta de
+  conciliación financiera.
 - Los archivos `GOF.GRB.FM14.F260813.txt` y `GOF.GRB.FM14.F260814.txt` en
   la raíz (~130+ MB cada uno) son insumos reales de prueba manual, no se
   leen por ningún test automatizado (los tests usan `construir_linea` con
@@ -512,7 +535,8 @@ en vez de minutos.
 | `exportador.py` | Escritura y formato del archivo Excel de salida |
 | `utils.py` | Decorador `manejar_errores`, logging, utilidades de consola |
 | `orquestador.bat` | Punto de entrada para el usuario final (doble clic) |
-| `tests/` | Suite de 26 pruebas con `pytest` |
+| `requirements.txt` | Dependencias externas con límites de versión (`pandas`, `openpyxl`, `pytest`), instalables con `pip install -r requirements.txt` |
+| `tests/` | Suite de pruebas con `pytest` |
 | `scripts/benchmark_rendimiento.py` | Medición de rendimiento con datos sintéticos |
 | `CLAUDE.md` | Guía de orientación para agentes/desarrolladores que trabajen en el repo |
 | `MANUAL_USUARIO.md` | Manual de usuario final en español |

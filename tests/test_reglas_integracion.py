@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from reglas import generar_reporte
 
@@ -69,3 +70,29 @@ def test_generar_reporte_ignora_columna_dia():
 
     for hoja in hojas.values():
         assert "__dia" not in hoja.columns
+
+
+def test_generar_reporte_columna_faltante_lanza_valueerror():
+    # `generar_reporte` esta decorado con @manejar_errores, que atrapa
+    # cualquier ValueError y devuelve None (comportamiento correcto para
+    # el flujo real via el menu). Para probar la logica de validacion en
+    # si misma sin pelear con el decorador, se llama a la funcion original
+    # via el atributo `__wrapped__` que `functools.wraps` deja expuesto.
+    df = pd.DataFrame([_fila()]).drop(columns=["MONTO-1"])
+
+    with pytest.raises(ValueError, match="MONTO-1"):
+        generar_reporte.__wrapped__(df)
+
+
+def test_generar_reporte_columna_faltante_devuelve_none_via_decorador(capsys):
+    # Complemento del test anterior: confirma que, a traves de la API
+    # publica (con el decorador puesto), el fallo se traduce en el mismo
+    # comportamiento amigable que cualquier otro ValueError — None y un
+    # mensaje "[!] Error de datos o configuracion" — en vez de un reporte
+    # vacio con un falso "[OK]".
+    df = pd.DataFrame([_fila()]).drop(columns=["MONTO-1"])
+
+    resultado = generar_reporte(df)
+
+    assert resultado is None
+    assert "Error de datos o configuracion" in capsys.readouterr().out

@@ -4,3 +4,4 @@ __pycache__/
 salidas/
 logs/
 .superpowers/
+.pytest_cache/

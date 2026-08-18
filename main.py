@@ -24,7 +24,7 @@ from reglas import generar_reporte
 from utils import limpiar_pantalla, pausar
 from validador import extraer_dia, seleccionar_archivos
 
-estado = {"rutas": [], "df": None}
+estado = {"rutas": []}
 
 
 def mostrar_menu():
@@ -49,7 +49,6 @@ def opcion_seleccionar():
     rutas = seleccionar_archivos()
     if rutas:
         estado["rutas"] = rutas
-        estado["df"] = None
         print(f"\n{len(rutas)} archivo(s) seleccionado(s):")
         for ruta in rutas:
             print(f"   - {ruta.name}")
@@ -91,7 +90,6 @@ def _construir_dataframe_base():
 
     print("\nConstruyendo tabla base combinada...")
     df = pd.concat(partes, ignore_index=True)
-    estado["df"] = df
     print(f"Tabla base construida: {len(df)} filas, {df['__dia'].nunique()} dia(s).")
     return df
 

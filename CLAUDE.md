@@ -10,9 +10,10 @@ transaction records) and produces **one** formatted Excel report with 3
 sheets. It is a sibling project to "conexión directa" (same flat-file
 layout family, same overall architecture) but a smaller, more focused
 report: a single workbook ("EP") instead of three separate Archivo-N
-workbooks. There is no package manager manifest (no requirements.txt/
-pyproject.toml) — dependencies are `pandas`, `openpyxl`, and (for tests)
-`pytest`, installed into whatever Python environment runs the script.
+workbooks. Dependencies are declared in `requirements.txt` at the repo
+root (`pandas`, `openpyxl`, and `pytest` for tests) — install with
+`pip install -r requirements.txt` into whatever Python environment runs
+the script. There is no `pyproject.toml`.
 
 Two deeper reference docs already exist in the repo root and are worth
 reading before making non-trivial changes:
@@ -51,7 +52,7 @@ caching across runs), so the report always reflects the current file
 contents even if a file was swapped out mid-session — same deliberate
 design as "conexión directa".
 
-Tests: `pytest tests/ -v` from the repo root (26 tests, all passing as of
+Tests: `pytest tests/ -v` from the repo root (29 tests, all passing as of
 this writing — see `DOCUMENTACION_TECNICA.md` section 8 for the breakdown
 by file). There is no linter or build step configured.
 
@@ -115,9 +116,12 @@ config.py  →  lector.py  →  reglas.py  →  exportador.py
   other `Exception`, prints a Spanish user-facing message, logs to
   `logs/ejecucion_YYYYMMDD.log`, and returns `None` instead of raising — a
   single bad file/row must never crash the menu loop in `main.py`.
-- **`main.py`** — the menu loop and `estado` dict (`{"rutas", "df"}`, note
-  `rutas` is a list) holding session state. Orchestrates the pipeline
-  above; contains no business logic itself.
+- **`main.py`** — the menu loop and `estado` dict (`{"rutas": [...]}`)
+  holding session state — just the selected file paths; the built
+  DataFrame is a local variable inside `_construir_dataframe_base()` /
+  `opcion_generar_reporte()`, never stashed in `estado`, since nothing
+  ever read it back from there. Orchestrates the pipeline above; contains
+  no business logic itself.
 
 ## How this project differs from "conexión directa"
 

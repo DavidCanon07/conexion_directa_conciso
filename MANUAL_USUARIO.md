@@ -13,7 +13,10 @@ fórmulas en Excel sobre el archivo plano.
 
 - El equipo debe tener **Python instalado**, con las librerías `pandas` y
   `openpyxl` (esto lo prepara una sola vez el área de sistemas/soporte
-  técnico, no es algo que deba hacer el usuario en cada uso).
+  técnico, no es algo que deba hacer el usuario en cada uso). Sistemas
+  instala estas dependencias ejecutando `pip install -r requirements.txt`
+  desde la carpeta del proyecto (el archivo `requirements.txt` ya viene
+  incluido y lista las versiones exactas a instalar).
 - Debe tener **Microsoft Excel** (u otro programa compatible) instalado
   para poder abrir el reporte generado.
 - Debe conservarse la carpeta completa del proyecto en el equipo (con

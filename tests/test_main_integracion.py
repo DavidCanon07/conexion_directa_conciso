@@ -17,14 +17,23 @@ def test_flujo_completo_genera_excel_con_3_hojas(tmp_path, monkeypatch):
     ruta = tmp_path / "GOF.GRB.FM14.F260813.txt"
     ruta.write_text(_linea_0911() + "\n", encoding="utf-8")
 
+    # main.py hace `from config import REPORTE_EP`, asi que el nombre vive
+    # como atributo propio de `main` (no de `config`) — hay que parchear
+    # `main.REPORTE_EP` para que `opcion_generar_reporte()` (que referencia
+    # el nombre importado, no `config.REPORTE_EP`) realmente lo use.
+    # Esto evita que el test escriba sobre el archivo real de salidas/
+    # (el reporte diario real del operador), que podria estar abierto en
+    # Excel y hacer fallar el test con PermissionError por razones ajenas
+    # al codigo bajo prueba.
+    reporte_tmp = tmp_path / "EP-test.xlsx"
+    monkeypatch.setattr("main.REPORTE_EP", reporte_tmp)
+
     main.estado["rutas"] = [ruta]
-    main.estado["df"] = None
 
     monkeypatch.setattr("main.pausar", lambda: None)
     main.opcion_generar_reporte()
 
-    from config import REPORTE_EP
-    assert REPORTE_EP.exists()
-    libro = openpyxl.load_workbook(REPORTE_EP)
+    assert reporte_tmp.exists()
+    libro = openpyxl.load_workbook(reporte_tmp)
     assert len(libro.sheetnames) == 3
     assert "EFECTO CERO" in libro.sheetnames

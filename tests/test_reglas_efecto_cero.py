@@ -68,3 +68,31 @@ def test_llave_distinta_tarjeta_no_empareja():
 
     assert len(restante) == 2
     assert len(efecto_cero) == 0
+
+
+def test_efecto_cero_preserva_orden_del_llamador_con_tarjetas_intercaladas():
+    # Regresion: antes, `df.loc[sorted(indices_pareja)]` reordenaba
+    # `df_efecto_cero` por valor de indice, descartando el orden que
+    # `generar_reporte` ya habia establecido (sort por tarjeta/aprobacion/
+    # monto) antes de llamar a esta funcion. Con entrada intercalada
+    # (tarjeta A, tarjeta B, tarjeta A, tarjeta B), el resultado debe
+    # conservar el orden relativo original, no reagrupar por indice.
+    df = pd.DataFrame([
+        _fila("A", "AAA", 100.0),   # indice 0
+        _fila("B", "BBB", 200.0),   # indice 1
+        _fila("A", "AAA", -100.0),  # indice 2
+        _fila("B", "BBB", -200.0),  # indice 3
+    ])
+
+    _, efecto_cero = _detectar_efecto_cero(df)
+
+    assert len(efecto_cero) == 4
+    # Orden esperado si se preserva el orden original de `df`: 0,1,2,3.
+    # `sorted(indices_pareja)` tambien habria dado 0,1,2,3 aqui (coincide
+    # con el orden de indice), asi que se usa un indice explicito no
+    # ordenado para que el test realmente distinga ambos comportamientos.
+    df_reordenado = df.loc[[2, 0, 3, 1]].copy()
+    _, efecto_cero_reordenado = _detectar_efecto_cero(df_reordenado)
+
+    assert list(efecto_cero_reordenado["NUMERO-TARJETA"]) == ["A", "A", "B", "B"]
+    assert list(efecto_cero_reordenado["MONTO-1"]) == [-100.0, 100.0, -200.0, 200.0]

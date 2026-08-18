@@ -13,6 +13,19 @@ from utils import manejar_errores
 
 COLUMNAS_LLAVE_EFECTO_CERO = ["NUMERO-TARJETA", "NUMERO -APROBACION"]
 
+COLUMNAS_REQUERIDAS = [
+    "RED-LOGICA",
+    "TIPO-REGISTRO",
+    "FIID SPONSOR",
+    "TIPO DE MENSAJE",
+    "COD-TIPO-TRANS",
+    " CODIGO-RESP",
+    "MONTO-1",
+    "NUMERO-TARJETA",
+    "NUMERO -APROBACION",
+    "INDICADOR INTER/NACIONAL",
+]
+
 
 def _convertir_monto(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -90,7 +103,10 @@ def _detectar_efecto_cero(df: pd.DataFrame) -> tuple:
         return df.copy(), df.iloc[0:0].copy()
 
     indices_pareja = set(parejas["_idx_original_neg"]) | set(parejas["_idx_original_pos"])
-    df_efecto_cero = df.loc[sorted(indices_pareja)].copy()
+    # isin() (no sorted(...)) preserva el orden de filas que ya trae `df`
+    # (p.ej. el sort_values de tarjeta/aprobacion/monto que hace el llamador
+    # antes de invocar esta funcion) en vez de reordenar por valor de indice.
+    df_efecto_cero = df.loc[df.index.isin(indices_pareja)].copy()
     df_restante = df.drop(index=indices_pareja).copy()
     return df_restante, df_efecto_cero
 
@@ -101,9 +117,25 @@ def generar_reporte(df: pd.DataFrame) -> dict:
     Genera las 3 hojas del reporte EP a partir del df base. La columna
     "__dia" (si existe, por seleccion multi-archivo) no se usa para
     segregar hojas: este reporte siempre trabaja sobre el universo
-    combinado de todos los archivos seleccionados, igual que
-    "TIPO 50"/"TIPO 12-15" en "conexion directa".
+    combinado de todos los archivos seleccionados, igual que las hojas
+    combinadas del proyecto "conexion directa" (p.ej. "TIPO 50" /
+    "TIPO 12-15" en ese proyecto hermano) — este reporte EP no tiene
+    hojas con esos nombres, solo "EP <fecha>", "EP <fecha> VISA" y
+    "EFECTO CERO".
+
+    Antes de filtrar, valida que todas las columnas que necesita
+    `_filtrar_ep`/`_detectar_efecto_cero` esten presentes en `df`. Si
+    falta alguna, lanza ValueError con los nombres faltantes en vez de
+    dejar que `_filtrar_ep` la sustituya silenciosamente por una Serie
+    vacia (lo que produciria un reporte de 0 filas con un falso "[OK]").
     """
+    faltantes = [col for col in COLUMNAS_REQUERIDAS if col not in df.columns]
+    if faltantes:
+        raise ValueError(
+            "Faltan columnas requeridas en el DataFrame base: "
+            + ", ".join(repr(c) for c in faltantes)
+        )
+
     df = df.drop(columns="__dia", errors="ignore")
     df = _convertir_monto(df)
 
