@@ -10,7 +10,9 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+RAIZ_PROYECTO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(RAIZ_PROYECTO))
+sys.path.insert(0, str(RAIZ_PROYECTO / "src"))
 
 from lector import construir_dataframe  # noqa: E402
 from reglas import generar_reporte  # noqa: E402

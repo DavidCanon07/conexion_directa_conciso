@@ -15,14 +15,19 @@ desde cero (no se cachea entre corridas), igual que en "conexion
 directa".
 """
 
+import sys
+from pathlib import Path
+
 import pandas as pd
 
-from config import REPORTE_EP
-from exportador import guardar_con_formato
-from lector import construir_dataframe, leer_lineas
-from reglas import generar_reporte
-from utils import limpiar_pantalla, pausar
-from validador import extraer_dia, seleccionar_archivos
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+
+from config import REPORTE_EP  # noqa: E402
+from exportador import guardar_con_formato  # noqa: E402
+from lector import construir_dataframe, leer_lineas  # noqa: E402
+from reglas import generar_reporte  # noqa: E402
+from utils import limpiar_pantalla, pausar  # noqa: E402
+from validador import extraer_dia, seleccionar_archivos  # noqa: E402
 
 estado = {"rutas": []}
 

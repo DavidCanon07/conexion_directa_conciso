@@ -7,6 +7,14 @@ reglas de negocio de filtrado, negativización y "efecto cero".
 
 Ruta del proyecto: `c:\Users\dacanonm\OneDrive - Indra\Documentos\GitHub\conexion_directa_conciso`
 
+Estructura de carpetas: `main.py` y `orquestador.bat` (punto de entrada) y
+`requirements.txt` viven en la raíz; los 6 módulos de negocio
+(`config.py`, `lector.py`, `utils.py`, `validador.py`, `reglas.py`,
+`exportador.py`) viven en `src/`; esta documentación y `MANUAL_USUARIO.md`
+viven en `docs/`. `main.py` agrega `src/` a `sys.path` antes de importar,
+así que los imports internos (`from config import ...`, etc.) no cambian
+de forma solo por la ubicación del archivo.
+
 ## 1. Arquitectura general
 
 Bucle de menú (`while True` en `main.py`) sin clases, con un único estado de
@@ -16,16 +24,17 @@ sesión en memoria:
 estado = {"rutas": []}
 ```
 
-Grafo de dependencias entre módulos:
+Grafo de dependencias entre módulos (todos dentro de `src/`, salvo
+`main.py` que está en la raíz):
 
 ```
 main.py
- ├─ config.py      (LAYOUT reducido, REPORTE_EP)
- ├─ lector.py      (construir_dataframe, leer_lineas) → config.py, utils.py
- ├─ validador.py   (extraer_dia, seleccionar_archivos)  → utils.py
- ├─ reglas.py       (generar_reporte)                    → utils.py
- ├─ exportador.py  (guardar_con_formato)                → utils.py
- └─ utils.py       (manejar_errores, logger, limpiar_pantalla, pausar) → config.py (CARPETA_LOGS)
+ ├─ src/config.py      (LAYOUT reducido, REPORTE_EP)
+ ├─ src/lector.py      (construir_dataframe, leer_lineas) → config.py, utils.py
+ ├─ src/validador.py   (extraer_dia, seleccionar_archivos)  → utils.py
+ ├─ src/reglas.py       (generar_reporte)                    → utils.py
+ ├─ src/exportador.py  (guardar_con_formato)                → utils.py
+ └─ src/utils.py       (manejar_errores, logger, limpiar_pantalla, pausar) → config.py (CARPETA_LOGS)
 ```
 
 `config.py` es la base (no importa nada del proyecto). Todos los demás
@@ -528,15 +537,16 @@ en vez de minutos.
 | Archivo | Responsabilidad |
 |---|---|
 | `main.py` | Menú interactivo, orquestación, estado de sesión |
-| `config.py` | LAYOUT reducido (10 campos), ruta de carpetas y del archivo de salida `REPORTE_EP` |
-| `lector.py` | Lectura del archivo plano y construcción del DataFrame crudo (todo string) |
-| `validador.py` | Selección de archivo(s) plano(s), extracción/confirmación del día |
-| `reglas.py` | Reglas de negocio del reporte EP (filtro, negativización, efecto cero) |
-| `exportador.py` | Escritura y formato del archivo Excel de salida |
-| `utils.py` | Decorador `manejar_errores`, logging, utilidades de consola |
+| `src/config.py` | LAYOUT reducido (10 campos), ruta de carpetas y del archivo de salida `REPORTE_EP` |
+| `src/lector.py` | Lectura del archivo plano y construcción del DataFrame crudo (todo string) |
+| `src/validador.py` | Selección de archivo(s) plano(s), extracción/confirmación del día |
+| `src/reglas.py` | Reglas de negocio del reporte EP (filtro, negativización, efecto cero) |
+| `src/exportador.py` | Escritura y formato del archivo Excel de salida |
+| `src/utils.py` | Decorador `manejar_errores`, logging, utilidades de consola |
 | `orquestador.bat` | Punto de entrada para el usuario final (doble clic) |
 | `requirements.txt` | Dependencias externas con límites de versión (`pandas`, `openpyxl`, `pytest`), instalables con `pip install -r requirements.txt` |
 | `tests/` | Suite de pruebas con `pytest` |
 | `scripts/benchmark_rendimiento.py` | Medición de rendimiento con datos sintéticos |
 | `CLAUDE.md` | Guía de orientación para agentes/desarrolladores que trabajen en el repo |
-| `MANUAL_USUARIO.md` | Manual de usuario final en español |
+| `docs/DOCUMENTACION_TECNICA.md` | Este documento |
+| `docs/MANUAL_USUARIO.md` | Manual de usuario final en español |

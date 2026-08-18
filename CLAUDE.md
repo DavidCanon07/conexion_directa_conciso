@@ -15,18 +15,25 @@ root (`pandas`, `openpyxl`, and `pytest` for tests) — install with
 `pip install -r requirements.txt` into whatever Python environment runs
 the script. There is no `pyproject.toml`.
 
-Two deeper reference docs already exist in the repo root and are worth
-reading before making non-trivial changes:
-- **`DOCUMENTACION_TECNICA.md`** — the reduced 10-field LAYOUT table, the
+Two deeper reference docs live in `docs/` and are worth reading before
+making non-trivial changes:
+- **`docs/DOCUMENTACION_TECNICA.md`** — the reduced 10-field LAYOUT table, the
   exact boolean conditions behind `_filtrar_ep` (shared by both EP sheets),
   the negativization logic, a full prose explanation of the "efecto cero"
   pairing algorithm (`groupby().cumcount()` + `merge`), the module
   dependency graph, the measured benchmark (1,000,000 rows: parse 2.84s,
   business rules 2.22s, total 5.07s), and a "Posibles mejoras" section.
-- **`MANUAL_USUARIO.md`** — end-user manual in Spanish (menu walkthrough,
+- **`docs/MANUAL_USUARIO.md`** — end-user manual in Spanish (menu walkthrough,
   error messages table, recommended weekend-consolidation flow, and a
   plain-language explanation of what "EFECTO CERO" means for someone
   without a technical background).
+
+`main.py` and `orquestador.bat` (the entry points) live at the repo root;
+the six business-logic modules (`config.py`, `lector.py`, `utils.py`,
+`validador.py`, `reglas.py`, `exportador.py`) live in `src/`. `main.py`
+adds `src/` to `sys.path` before importing, so the internal import
+statements (`from config import ...`, etc.) are unaffected by the module
+files' location.
 
 ## Running
 
@@ -53,17 +60,18 @@ contents even if a file was swapped out mid-session — same deliberate
 design as "conexión directa".
 
 Tests: `pytest tests/ -v` from the repo root (29 tests, all passing as of
-this writing — see `DOCUMENTACION_TECNICA.md` section 8 for the breakdown
+this writing — see `docs/DOCUMENTACION_TECNICA.md` section 8 for the breakdown
 by file). There is no linter or build step configured.
 
 ## Architecture
 
 Data flows in one direction through five modules, each with a single
-responsibility — same shape as "conexión directa":
+responsibility — same shape as "conexión directa". All five (plus
+`utils.py`) live in `src/`:
 
 ```
-config.py  →  lector.py  →  reglas.py  →  exportador.py
-   (layout)     (parse)      (filter/pair)   (write .xlsx)
+src/config.py  →  src/lector.py  →  src/reglas.py  →  src/exportador.py
+   (layout)          (parse)          (filter/pair)      (write .xlsx)
 ```
 
 - **`config.py`** — `LAYOUT`: a **reduced** fixed-width field spec (only
@@ -91,7 +99,7 @@ config.py  →  lector.py  →  reglas.py  →  exportador.py
   out — same card + same approval number + same absolute amount, one
   negative and one positive — using `groupby().cumcount()` + `merge` for
   vectorized 1:1 pairing, applied **only** to the VISA sheet, never to the
-  "0911" sheet). See `DOCUMENTACION_TECNICA.md` section 4 for the exact
+  "0911" sheet). See `docs/DOCUMENTACION_TECNICA.md` section 4 for the exact
   boolean conditions and a full prose walkthrough of the pairing algorithm.
 - **`exportador.py`** — `guardar_con_formato(path, hojas)` writes a sheets
   dict to `.xlsx`. All 3 sheets in this project are always DataFrames (no
@@ -148,7 +156,7 @@ project, but differs in two structural ways worth calling out explicitly:
    discarded immediately and every sheet always reflects the combined
    universe of all selected files/days, never a single day. If day-level
    splitting is ever needed, see "Posibles mejoras" in
-   `DOCUMENTACION_TECNICA.md` for how it could be reintroduced without
+   `docs/DOCUMENTACION_TECNICA.md` for how it could be reintroduced without
    touching `lector.py` or `main.py`.
 
 ## Multi-file selection (weekend consolidation)
@@ -196,7 +204,7 @@ it for sheet splitting (see previous section).
   space), `"NUMERO -APROBACION"` (space before the hyphen).
 - `generar_reporte` is implemented against real business rules and real
   `LAYOUT` field names — there is no placeholder logic left. See
-  `DOCUMENTACION_TECNICA.md` section 4 for the exact boolean conditions.
+  `docs/DOCUMENTACION_TECNICA.md` section 4 for the exact boolean conditions.
 - Large `*.txt` files at the repo root (`GOF.GRB.FM14.F260813.txt`,
   `GOF.GRB.FM14.F260814.txt` — real production naming, days 13/14) are
   sample flat-file inputs for manual testing, ~130+ MB each — don't read
