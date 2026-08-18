@@ -93,3 +93,30 @@ def _detectar_efecto_cero(df: pd.DataFrame) -> tuple:
     df_efecto_cero = df.loc[sorted(indices_pareja)].copy()
     df_restante = df.drop(index=indices_pareja).copy()
     return df_restante, df_efecto_cero
+
+
+@manejar_errores
+def generar_reporte(df: pd.DataFrame) -> dict:
+    """
+    Genera las 3 hojas del reporte EP a partir del df base. La columna
+    "__dia" (si existe, por seleccion multi-archivo) no se usa para
+    segregar hojas: este reporte siempre trabaja sobre el universo
+    combinado de todos los archivos seleccionados, igual que
+    "TIPO 50"/"TIPO 12-15" en "conexion directa".
+    """
+    df = df.drop(columns="__dia", errors="ignore")
+    df = _convertir_monto(df)
+
+    hoja_0911 = _filtrar_ep(df, "0911").sort_values("COD-TIPO-TRANS", kind="stable")
+
+    hoja_visa = _filtrar_ep(df, "VISA").sort_values(
+        ["NUMERO-TARJETA", "NUMERO -APROBACION", "MONTO-1"], kind="stable"
+    )
+    hoja_visa, efecto_cero = _detectar_efecto_cero(hoja_visa)
+
+    fecha = pd.Timestamp.now().strftime("%d-%m-%y")
+    return {
+        f"EP {fecha}": hoja_0911,
+        f"EP {fecha} VISA": hoja_visa,
+        "EFECTO CERO": efecto_cero,
+    }
