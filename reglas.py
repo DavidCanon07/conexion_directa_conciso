@@ -53,3 +53,43 @@ def _filtrar_ep(df: pd.DataFrame, red_logica: str) -> pd.DataFrame:
     hoja.loc[cond_negativo, "MONTO-1"] = -hoja.loc[cond_negativo, "MONTO-1"].abs()
 
     return hoja
+
+
+def _detectar_efecto_cero(df: pd.DataFrame) -> tuple:
+    """
+    Identifica parejas de filas cuyo MONTO-1 se anula (una negativa y una
+    positiva con la misma tarjeta, aprobacion y valor absoluto). Usa un
+    numero de ocurrencia por llave (groupby().cumcount()) para emparejar
+    1 a 1 incluso con llaves duplicadas, sin loops en Python — necesario
+    para que archivos de hasta 1M de filas se procesen en segundos.
+
+    Devuelve (df_restante, df_efecto_cero): el primero excluye las filas
+    emparejadas, el segundo contiene ambas filas (negativa y positiva) de
+    cada pareja encontrada, con las columnas originales del df de entrada.
+    """
+    trabajo = df.reset_index(drop=False).rename(columns={"index": "_idx_original"})
+    trabajo["_abs_monto"] = trabajo["MONTO-1"].abs()
+
+    llave = COLUMNAS_LLAVE_EFECTO_CERO + ["_abs_monto"]
+    negativos = trabajo[trabajo["MONTO-1"] < 0].copy()
+    positivos = trabajo[trabajo["MONTO-1"] > 0].copy()
+
+    if negativos.empty or positivos.empty:
+        return df.copy(), df.iloc[0:0].copy()
+
+    negativos["_ocurrencia"] = negativos.groupby(llave).cumcount()
+    positivos["_ocurrencia"] = positivos.groupby(llave).cumcount()
+
+    parejas = negativos.merge(
+        positivos,
+        on=llave + ["_ocurrencia"],
+        suffixes=("_neg", "_pos"),
+    )
+
+    if parejas.empty:
+        return df.copy(), df.iloc[0:0].copy()
+
+    indices_pareja = set(parejas["_idx_original_neg"]) | set(parejas["_idx_original_pos"])
+    df_efecto_cero = df.loc[sorted(indices_pareja)].copy()
+    df_restante = df.drop(index=indices_pareja).copy()
+    return df_restante, df_efecto_cero
