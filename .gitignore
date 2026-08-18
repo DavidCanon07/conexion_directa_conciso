@@ -1,0 +1,6 @@
+GOF.GRB.FM14.*.txt
+__pycache__/
+*.pyc
+salidas/
+logs/
+.superpowers/
