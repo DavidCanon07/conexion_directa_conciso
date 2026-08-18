@@ -17,12 +17,17 @@ the script. There is no `pyproject.toml`.
 
 Two deeper reference docs live in `docs/` and are worth reading before
 making non-trivial changes:
-- **`docs/DOCUMENTACION_TECNICA.md`** — the reduced 10-field LAYOUT table, the
-  exact boolean conditions behind `_filtrar_ep` (shared by both EP sheets),
-  the negativization logic, a full prose explanation of the "efecto cero"
+- **`docs/DOCUMENTACION_TECNICA.md`** — the full 55-field LAYOUT table
+  (identical positions to the sibling project's — expanded from an earlier
+  10-field reduction so output sheets carry the complete flat-file row, not
+  just the fields the business rules filter on), the exact boolean
+  conditions behind `_filtrar_ep` (shared by both EP sheets), the
+  negativization logic, a full prose explanation of the "efecto cero"
   pairing algorithm (`groupby().cumcount()` + `merge`), the module
-  dependency graph, the measured benchmark (1,000,000 rows: parse 2.84s,
-  business rules 2.22s, total 5.07s), and a "Posibles mejoras" section.
+  dependency graph, the measured benchmark (1,000,000 rows with the full
+  55-field LAYOUT: parse ~22-30s via `pandas.read_fwf`, business rules
+  ~2s, Excel write ~50s via `Workbook(write_only=True)`, total ~75-90s),
+  and a "Posibles mejoras" section.
 - **`docs/MANUAL_USUARIO.md`** — end-user manual in Spanish (menu walkthrough,
   error messages table, recommended weekend-consolidation flow, and a
   plain-language explanation of what "EFECTO CERO" means for someone
@@ -74,20 +79,25 @@ src/config.py  →  src/lector.py  →  src/reglas.py  →  src/exportador.py
    (layout)          (parse)          (filter/pair)      (write .xlsx)
 ```
 
-- **`config.py`** — `LAYOUT`: a **reduced** fixed-width field spec (only
-  the 10 fields the EP business rules actually need — `TIPO-REGISTRO`,
-  `RED-LOGICA`, `NUMERO-TARJETA`, `FIID SPONSOR`, `TIPO DE MENSAJE`,
-  `COD-TIPO-TRANS`, `" CODIGO-RESP"`, `MONTO-1`, `NUMERO -APROBACION`,
-  `INDICADOR INTER/NACIONAL`), each with 1-indexed start position
-  (`inicio`) and field length (`longitud`). Trimming the field list from
-  the sibling project's 55 fields down to 10 doesn't affect parsing of the
-  fields that remain — each is sliced independently by its own absolute
-  position. Also defines `REPORTE_EP` (the single output path in
-  `salidas/`, timestamped by day) and encoding.
-- **`lector.py`** — reads non-empty lines from the flat file and slices
-  each line per `LAYOUT` into a dict, producing one flat
-  `pandas.DataFrame` (`construir_dataframe`). Every field is kept as a
-  stripped string; no type conversion happens here.
+- **`config.py`** — `LAYOUT`: the **full** 55-field fixed-width field spec,
+  identical in names and positions to the sibling project's `LAYOUT`, each
+  with 1-indexed start position (`inicio`) and field length (`longitud`).
+  Earlier this project shipped a reduced 10-field `LAYOUT` (only the fields
+  `_filtrar_ep`/`_detectar_efecto_cero` need); it was expanded back to the
+  full 55 because the output sheets must carry the complete flat-file row,
+  not just the fields used for filtering — `reglas.py`'s business logic
+  still only reads the ~10 fields it needs (see `COLUMNAS_REQUERIDAS` in
+  `reglas.py`), the other ~45 fields simply ride along unchanged from
+  `lector.py` to the Excel output. Also defines `REPORTE_EP` (the single
+  output path in `salidas/`, timestamped by day) and encoding.
+- **`lector.py`** — extracts every `LAYOUT` field by character position
+  using `pandas.read_fwf` (C-accelerated fixed-width parser, `colspecs`
+  derived from `LAYOUT`, `dtype=str` to avoid losing leading zeros or
+  inferring types) into one flat `pandas.DataFrame` (`construir_dataframe`).
+  Replaces an earlier per-line Python loop (55 slices + `.strip()` per
+  line), which became the real bottleneck once `LAYOUT` grew from 10 to 55
+  fields. Every field is kept as a stripped string; no type conversion
+  happens here.
 - **`reglas.py`** — all business logic, exposed through a single public
   function: `generar_reporte(df)` → `{"NombreHoja": DataFrame}` with
   exactly 3 keys: `"EP <fecha>"`, `"EP <fecha> VISA"`, `"EFECTO CERO"`.
@@ -102,15 +112,24 @@ src/config.py  →  src/lector.py  →  src/reglas.py  →  src/exportador.py
   "0911" sheet). See `docs/DOCUMENTACION_TECNICA.md` section 4 for the exact
   boolean conditions and a full prose walkthrough of the pairing algorithm.
 - **`exportador.py`** — `guardar_con_formato(path, hojas)` writes a sheets
-  dict to `.xlsx`. All 3 sheets in this project are always DataFrames (no
-  free-position "layout libre" sheet like Archivo 3's `"Hoja1"` in
-  "conexión directa"): header styling, frozen header row, auto column
-  width, and currency formatting inferred from column name substrings
-  (`"monto"`/`"valor"` → `#,##0.00`; there's no date column in this reduced
-  LAYOUT, so the `"fecha"` formatting branch never triggers here). Writes
-  empty DataFrame sheets (headers only) rather than failing when a filter
-  matches zero rows — the normal case for `"EFECTO CERO"` when no pair is
-  found — and warns in console + log.
+  dict to `.xlsx` via `openpyxl.Workbook(write_only=True)` unconditionally
+  (all 3 sheets in this project are always DataFrames — no free-position
+  "layout libre" sheet like Archivo 3's `"Hoja1"` in "conexión directa" —
+  so, unlike the sibling project, there's no need to fall back to a normal
+  `Workbook`). Writes each row with `ws.append()` instead of
+  `DataFrame.to_excel()` (which assigns cell-by-cell — a real cost now
+  that each row has 55 columns, not 10): header styling, frozen header
+  row, auto column width (estimated from a sample of the first 2000 rows,
+  not the full DataFrame), and currency formatting inferred from column
+  name substrings (`"monto"`/`"valor"` → `#,##0.00`, covering `MONTO-1`
+  and `MONTO-2` now that the full LAYOUT is in use; there's no date column
+  in this project's LAYOUT, so the `"fecha"` formatting branch never
+  triggers here) are all built into `WriteOnlyCell` objects *before* each
+  `ws.append()`, since write-only sheets serialize a row as soon as it's
+  appended and can't be edited afterward. Writes empty DataFrame sheets
+  (headers only) rather than failing when a filter matches zero rows — the
+  normal case for `"EFECTO CERO"` when no pair is found — and warns in
+  console + log.
 - **`validador.py`** — file picker (`seleccionar_archivos`, plural — Tk
   multi-select dialog with a comma-separated console fallback) and
   `extraer_dia(ruta)`, which parses the day out of the production filename
@@ -201,7 +220,15 @@ it for sheet splitting (see previous section).
   of crashing.
 - Field names with irregular spacing in `LAYOUT` are literal and must be
   quoted exactly as-is, never normalized: `" CODIGO-RESP"` (leading
-  space), `"NUMERO -APROBACION"` (space before the hyphen).
+  space), `"NUMERO -APROBACION"` (space before the hyphen),
+  `"NUMEROS - CUOTAS "` (trailing space), `"COMISION -  FINANCIERA -
+  ADQUIRIENTE"` (double internal space).
+- **`LAYOUT` carries all 55 fields but `reglas.py` only reads ~10 of
+  them** (`COLUMNAS_REQUERIDAS` in `reglas.py`) — when adding a new
+  business rule that needs a field not yet referenced anywhere in
+  `reglas.py`, the field is already present in the parsed DataFrame (it's
+  never dropped), so no `lector.py`/`config.py` change is needed, just
+  reference the field name directly.
 - `generar_reporte` is implemented against real business rules and real
   `LAYOUT` field names — there is no placeholder logic left. See
   `docs/DOCUMENTACION_TECNICA.md` section 4 for the exact boolean conditions.

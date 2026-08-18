@@ -29,7 +29,7 @@ Grafo de dependencias entre módulos (todos dentro de `src/`, salvo
 
 ```
 main.py
- ├─ src/config.py      (LAYOUT reducido, REPORTE_EP)
+ ├─ src/config.py      (LAYOUT completo, REPORTE_EP)
  ├─ src/lector.py      (construir_dataframe, leer_lineas) → config.py, utils.py
  ├─ src/validador.py   (extraer_dia, seleccionar_archivos)  → utils.py
  ├─ src/reglas.py       (generar_reporte)                    → utils.py
@@ -77,40 +77,108 @@ Decisiones de diseño clave:
   No existe aquí un equivalente de `_segregar_por_dia` de "conexión
   directa".
 
-## 2. Estructura del archivo plano de entrada (LAYOUT reducido)
+## 2. Estructura del archivo plano de entrada (LAYOUT completo)
 
-Definido en `config.py` como una lista de **10 dicts** `{"nombre", "inicio",
-"longitud"}` — solo los campos que usan las reglas de este reporte, no los
-55 campos completos del layout de "conexión directa". `inicio` es
-1-indexado (posición del carácter) y `longitud` es la cantidad de caracteres
-que ocupa el campo (no una posición final). Recortar la lista de campos no
-afecta el parseo de los que sí se usan, porque cada uno se extrae por su
-propia posición absoluta.
+Definido en `config.py` como una lista de **55 dicts** `{"nombre", "inicio",
+"longitud"}` — idéntico en nombres y posiciones al layout completo de
+"conexión directa" (antes este proyecto traía solo los 10 campos que usan
+las reglas de negocio; se amplió para que las hojas de salida conserven la
+línea completa del archivo plano, no solo los campos que participan en el
+filtrado). `inicio` es 1-indexado
+(posición del carácter) y `longitud` es la cantidad de caracteres que ocupa
+el campo (no una posición final).
 
-Fórmula de parseo (`lector.py`, dentro de `construir_dataframe`):
+Fórmula de parseo (`lector.py`, dentro de `construir_dataframe`): equivale a
+un `MID(texto, inicio, longitud)` de Excel — mismas posiciones, `inicio - 1`
+como offset 0-indexado. Se implementa con `pandas.read_fwf` (parser de ancho
+fijo acelerado en C) en vez de un bucle Python campo por campo, con
+`colspecs` derivados de `LAYOUT` y `dtype=str` para no perder ceros a la
+izquierda ni inferir tipos:
 
 ```python
-campo["nombre"]: linea[campo["inicio"] - 1 : campo["inicio"] - 1 + campo["longitud"]].strip()
+colspecs = [(c["inicio"] - 1, c["inicio"] - 1 + c["longitud"]) for c in LAYOUT]
+df = pd.read_fwf(io.StringIO("\n".join(lineas)), colspecs=colspecs, names=nombres, dtype=str, header=None)
+df = df.fillna("")               # línea más corta que un colspec -> NaN, se normaliza a "" igual que el slicing manual
+for nombre in nombres:
+    df[nombre] = df[nombre].str.strip()
 ```
 
-Replica un `MID(texto, inicio, longitud)` de Excel. Todo se guarda como
-`str` con `.strip()` — **`lector.py` no convierte tipos**; eso se hace
-explícitamente en `reglas.py` (solo para `MONTO-1`).
+Todo se guarda como `str` — **`lector.py` no convierte tipos**; eso se hace
+explícitamente en `reglas.py` (solo para `MONTO-1`). Aunque `LAYOUT` ahora
+trae los 55 campos, `reglas.py` sigue usando solo el subconjunto necesario
+para filtrar/ordenar/emparejar (`RED-LOGICA`, `TIPO-REGISTRO`, `FIID
+SPONSOR`, `TIPO DE MENSAJE`, `COD-TIPO-TRANS`, `" CODIGO-RESP"`, `MONTO-1`,
+`NUMERO-TARJETA`, `NUMERO -APROBACION`, `INDICADOR INTER/NACIONAL` —
+`COLUMNAS_REQUERIDAS` en `reglas.py`); los 45 campos restantes viajan sin
+tocarse desde `lector.py` hasta el Excel de salida, porque `_filtrar_ep` y
+`_detectar_efecto_cero` operan con máscaras booleanas sobre el DataFrame
+completo (`df[mascara]`), nunca seleccionan un subconjunto de columnas.
 
-### Los 10 campos
+### Los 55 campos
 
 | # | nombre (literal en LAYOUT) | inicio | longitud |
 |---|---|---|---|
 | 1 | TIPO-REGISTRO | 1 | 2 |
 | 2 | RED-LOGICA | 3 | 4 |
-| 3 | NUMERO-TARJETA | 11 | 19 |
-| 4 | FIID SPONSOR | 34 | 4 |
-| 5 | TIPO DE MENSAJE | 73 | 4 |
-| 6 | COD-TIPO-TRANS | 179 | 2 |
-| 7 | " CODIGO-RESP" (espacio inicial literal) | 203 | 3 |
-| 8 | MONTO-1 | 206 | 13 |
-| 9 | NUMERO -APROBACION | 279 | 8 |
-| 10 | INDICADOR INTER/NACIONAL | 548 | 1 |
+| 3 | FIID-AUTORIZA | 7 | 4 |
+| 4 | NUMERO-TARJETA | 11 | 19 |
+| 5 | RED-LOGICA-ALMACEN | 30 | 4 |
+| 6 | FIID SPONSOR | 34 | 4 |
+| 7 | CODIGO ALMACEN | 38 | 19 |
+| 8 | CODIGO DATAFONO | 57 | 16 |
+| 9 | TIPO DE MENSAJE | 73 | 4 |
+| 10 | ORIGINA | 77 | 1 |
+| 11 | RESPONDE | 78 | 1 |
+| 12 | FECHA-TRANSACCION | 79 | 8 |
+| 13 | HORA TRANSACCION | 87 | 8 |
+| 14 | FECHA-POSTEO | 95 | 8 |
+| 15 | NUMERO-SECUENCIA | 103 | 12 |
+| 16 | UBICACIÓN DATAFONO | 115 | 25 |
+| 17 | NOMBRE-ALMACEN | 140 | 22 |
+| 18 | CIUDAD | 162 | 13 |
+| 19 | DEPARTAMENTO | 175 | 2 |
+| 20 | PAIS | 177 | 2 |
+| 21 | COD-TIPO-TRANS | 179 | 2 |
+| 22 | COD-TIPO-TARJETA | 181 | 1 |
+| 23 | COD-TIPO-CTA | 182 | 2 |
+| 24 | NUMERO - CUENTA | 184 | 19 |
+| 25 | " CODIGO-RESP" (espacio inicial literal) | 203 | 3 |
+| 26 | MONTO-1 | 206 | 13 |
+| 27 | MONTO-2 | 219 | 13 |
+| 28 | FECHA-VENCE-TARJETA | 232 | 6 |
+| 29 | CODIGO-EMPRESA-PSP | 238 | 4 |
+| 30 | NUMERO-FACTURA-PSP | 242 | 30 |
+| 31 | ORIGEN-PSP | 272 | 1 |
+| 32 | NUMERO-SEGUIMIENTO | 273 | 6 |
+| 33 | NUMERO -APROBACION | 279 | 8 |
+| 34 | DRAFT-CAPTURE-FLAG | 287 | 1 |
+| 35 | CODIGO- REVERSO | 288 | 2 |
+| 36 | MONEDA | 290 | 3 |
+| 37 | NUMEROS - CUOTAS (espacio final literal) | 293 | 2 |
+| 38 | COMISION - FCERA | 295 | 8 |
+| 39 | COMISION-ADMIN | 303 | 4 |
+| 40 | POR-RETENCION | 307 | 4 |
+| 41 | POR- BASE-RETENCION | 311 | 4 |
+| 42 | LIQUIDA-RETENCION | 315 | 10 |
+| 43 | COMISION - FINANCIERA - AUTORIZADOR | 325 | 8 |
+| 44 | COMISION -  FINANCIERA - ADQUIRIENTE (doble espacio literal) | 333 | 8 |
+| 45 | LIQUIDA-IVA | 341 | 12 |
+| 46 | MODO-INGRESO-POS | 353 | 3 |
+| 47 | CODIGO-DE-SERVICIO-TARJETA | 356 | 3 |
+| 48 | POR-RETEICA | 359 | 6 |
+| 49 | LIQUIDA-RETEICA | 365 | 10 |
+| 50 | FILLER-1 | 375 | 26 |
+| 51 | NTLF-COMISION-FIN-EMP-ADICIONAL | 401 | 8 |
+| 52 | FILLER-2 | 409 | 14 |
+| 53 | PLANO | 423 | 125 |
+| 54 | INDICADOR INTER/NACIONAL | 548 | 1 |
+| 55 | DISPOSITIVO | 519 | 2 |
+
+Campos 1, 2, 4, 6, 9, 21, 25, 26, 33, 54 son los que usa `reglas.py`
+(subconjunto marcado como `COLUMNAS_REQUERIDAS`); el resto viaja intacto
+hasta el Excel de salida. `DISPOSITIVO` (posición 519) cae dentro del rango
+de `PLANO` (423-547) — es intencional, replica una particularidad real del
+spec del banco, no un error de layout.
 
 ### Casos especiales del LAYOUT
 
@@ -122,11 +190,16 @@ explícitamente en `reglas.py` (solo para `MONTO-1`).
   Ejemplo: `"0000001464000"` → `14640.00`.
 - **Nombres de campo con espacios inconsistentes son literales e
   intencionales** — deben citarse tal cual en el código, no normalizarse:
-  `" CODIGO-RESP"` (espacio inicial) y `"NUMERO -APROBACION"` (espacio antes
-  del guion).
+  `" CODIGO-RESP"` (espacio inicial), `"NUMERO -APROBACION"` (espacio antes
+  del guion), `"NUMEROS - CUOTAS "` (espacio final), `"COMISION -  FINANCIERA
+  - ADQUIRIENTE"` (doble espacio interno).
+- **Campos FILLER** (`FILLER-1`, `FILLER-2`) no se usan en ninguna regla de
+  negocio; solo ocupan espacio para que el resto de posiciones cuadre con el
+  spec del banco — se conservan en la salida igual que cualquier otro campo.
 - `leer_lineas` solo descarta líneas vacías (`if linea.strip()`); no valida
-  que cada línea tenga el ancho total esperado. Una línea más corta produce
-  menos caracteres o cadena vacía en los campos finales, sin lanzar error.
+  que cada línea tenga el ancho total esperado. Una línea más corta que un
+  `colspec` produce campo vacío (antes por slicing fuera de rango, ahora por
+  `NaN` normalizado con `fillna("")`), sin lanzar error.
 - `COLUMNAS_LLAVE_EFECTO_CERO = ["NUMERO-TARJETA", "NUMERO -APROBACION"]`
   (en `reglas.py`) es la única constante que reutiliza nombres de columna
   del LAYOUT fuera de `_filtrar_ep` — ver sección 4.
@@ -300,7 +373,7 @@ negativo y otra en el lado positivo.
 4. Todo el emparejamiento se resuelve con operaciones vectorizadas de
    pandas (`groupby`, `cumcount`, `merge`) — sin loops en Python fila por
    fila — porque el reporte debe poder procesar archivos de hasta 1 millón
-   de filas en segundos (ver sección 6, benchmark).
+   de filas en un tiempo razonable (ver sección 9, benchmark).
 
 `_idx_original` (el índice del DataFrame de entrada, preservado con
 `reset_index`) es lo que permite, después del merge, recuperar qué filas
@@ -366,28 +439,52 @@ Aplicado a las funciones públicas: `leer_lineas`, `construir_dataframe`,
 propaga a `generar_reporte`, que sí lo tiene.
 
 **Señal de éxito/fracaso explícita**: `guardar_con_formato` devuelve `True`
-solo si el `with pd.ExcelWriter(...)` completó sin excepción; si
-`manejar_errores` capturó algo (ej. `PermissionError` por archivo abierto en
-Excel), nunca llega al `return True` y el decorador devuelve `None`.
-`main.py` usa `if not guardar_con_formato(REPORTE_EP, hojas)` en
-`opcion_generar_reporte()` para distinguir "se guardó" de "falló
-silenciosamente" y no mostrar un falso `[OK]` tras un fallo real.
+solo si `wb.save(path)` completó sin excepción; si `manejar_errores` capturó
+algo (ej. `PermissionError` por archivo abierto en Excel), nunca llega al
+`return True` y el decorador devuelve `None`. `main.py` usa
+`if not guardar_con_formato(REPORTE_EP, hojas)` en `opcion_generar_reporte()`
+para distinguir "se guardó" de "falló silenciosamente" y no mostrar un falso
+`[OK]` tras un fallo real.
 
 ## 6. Generación de Excel (`exportador.py`)
 
-`guardar_con_formato(path, hojas)` abre un único
-`pd.ExcelWriter(path, engine="openpyxl")` y, por cada entrada del dict
-`hojas` (las 3 son siempre DataFrames en este proyecto — no hay hoja de
-layout libre como el "Hoja1" de VALOR CINTA en "conexión directa"), escribe
-con `to_excel(...)` y aplica `_formatear_hoja(ws, df)`.
+`guardar_con_formato(path, hojas)` crea un `openpyxl.Workbook(write_only=True)`
+y, por cada entrada del dict `hojas` (las 3 son siempre DataFrames en este
+proyecto — no hay hoja de layout libre como el "Hoja1" de VALOR CINTA en
+"conexión directa"), escribe con `_formatear_hoja(ws, df)`. Se usa
+`write_only` sin condición (a diferencia de "conexión directa", que lo
+reserva para los archivos que nunca mezclan una hoja de posición libre)
+porque aquí **ninguna** de las 3 hojas es de layout libre.
 
-**`_formatear_hoja`**: encabezado con fondo azul oscuro (`1F4E78`), fuente
-blanca negrita centrada; ancho de columna automático
-(`min(largo_max + 3, 40)`); `freeze_panes = "A2"`. Detección de columnas
-moneda **por substring del nombre en minúsculas** (`"monto"` o `"valor"` →
-formato `#,##0.00`) — en este LAYOUT reducido, solo `MONTO-1` cae en esa
-regla; no hay columnas de fecha en el LAYOUT (a diferencia de "conexión
-directa"), así que la rama de formato de fecha nunca se activa aquí.
+**`_formatear_hoja`** escribe cada fila con `ws.append(fila)` — usando
+`df.itertuples(index=False, name=None)` — en vez de
+`DataFrame.to_excel(engine="openpyxl")`, que asigna celda por celda
+(`ws.cell(row, col, value)` una vez por cada una de las **55** columnas ×
+cada fila desde que el LAYOUT se amplió; antes, con el LAYOUT reducido de
+10 campos, el costo era menor pero el mismo patrón). El encabezado (fondo
+azul oscuro `1F4E78`, fuente blanca negrita centrada), el ancho de columna
+y el formato de moneda se calculan en el mismo recorrido de escritura:
+- Columnas moneda (`"monto"`/`"valor"` en el nombre, minúsculas — con el
+  LAYOUT completo eso cubre `MONTO-1` y `MONTO-2`) → formato `#,##0.00`,
+  ancho fijo 18. No hay columnas de fecha en el LAYOUT de este proyecto
+  (a diferencia de "conexión directa"), así que no existe rama de formato
+  de fecha aquí.
+- El resto de columnas → ancho estimado con una **muestra** de las
+  primeras 2000 filas (`df.head(2000)`), no con `df` completo — evita el
+  recorrido `astype(str).map(len)` sobre cientos de miles de filas solo
+  para calcular un ancho visual.
+- `NaN`/`NaT` (ej. `MONTO-1` con `pd.to_numeric(..., errors="coerce")`
+  sobre datos malformados) se normalizan a `None` con
+  `df.where(pd.notnull(df), None)` antes de escribir — openpyxl no acepta
+  `NaN` como valor de celda.
+
+En modo `write_only`, cada fila se serializa al XML de salida en cuanto se
+hace `ws.append()` y ya no se puede volver a tocar, así que el encabezado y
+el formato de moneda se arman **antes** de cada `append`, envolviendo el
+valor en `openpyxl.cell.WriteOnlyCell` en vez de asignarlos después.
+`freeze_panes` y `column_dimensions` también deben fijarse **antes** del
+primer `append` — verificado en openpyxl 3.1.5: asignados después, se
+ignoran silenciosamente (sin error, pero no se guardan en el `.xlsx`).
 
 **Hojas vacías**: se escriben igual (con encabezados), pero se advierte en
 consola y en el log (`logger.warning`) por cada una — no aborta la
@@ -409,8 +506,8 @@ existe), con la fecha del sistema en el nombre. `CARPETA_SALIDA` y
 
 | Paquete | Usado en | Propósito |
 |---|---|---|
-| `pandas` | `main.py`, `lector.py`, `reglas.py`, `exportador.py` | DataFrame, `concat`, `to_numeric`, `groupby`, `merge`, `ExcelWriter` |
-| `openpyxl` | `exportador.py` | Motor de escritura xlsx + estilos manuales |
+| `pandas` | `main.py`, `lector.py`, `reglas.py`, `exportador.py` | DataFrame, `concat`, `to_numeric`, `read_fwf`, `groupby`, `merge` |
+| `openpyxl` | `exportador.py` | `Workbook(write_only=True)`, `WriteOnlyCell`, estilos manuales |
 | `tkinter` (stdlib, import opcional con fallback) | `validador.py` | Diálogo de selección múltiple de archivos |
 | `pytest` (solo para desarrollo) | `tests/` | Suite de pruebas |
 
@@ -430,7 +527,7 @@ archivos fijos:
 
 | Archivo | Pruebas | Cubre |
 |---|---|---|
-| `test_lector.py` | 2 | Parseo por posición del LAYOUT reducido, líneas vacías descartadas |
+| `test_lector.py` | 2 | Parseo por posición del LAYOUT completo (55 campos), líneas vacías descartadas |
 | `test_utils.py` | 3 | `manejar_errores` (captura de las 4 ramas de excepción, retorno `None`) |
 | `test_validador.py` | 2 | `extraer_dia` (patrón `FYYMMDD` y fallback interactivo) |
 | `test_reglas_filtro.py` | 7 | `_convertir_monto`, `_filtrar_ep` (cada condición del filtro y la negativización, por separado) |
@@ -453,16 +550,30 @@ Genera un archivo plano sintético de N filas (por defecto 1,000,000,
 parámetro opcional por línea de comandos) usando `construir_linea` con
 valores aleatorios plausibles para cada campo del LAYOUT, y mide por
 separado el tiempo de `construir_dataframe` (parseo) y de `generar_reporte`
-(reglas de negocio).
+(reglas de negocio) — no incluye la escritura del Excel, medida aparte
+más abajo.
 
-**Resultado medido con 1,000,000 de filas**: parseo (`construir_dataframe`)
-2.84s, reglas de negocio (`generar_reporte`) 2.22s, **total 5.07s**. El
-tiempo total varía con la carga de la máquina en la que se ejecute (E/S en
-disco, otros procesos activos, etc.), pero el pipeline completo sigue sin
-usar loops en Python fila por fila en ninguna etapa (ni en el parseo por
-comprensión de listas/dicts, ni en las reglas vectorizadas de pandas), lo
-cual es lo que permite procesar 1 millón de filas en el orden de segundos
-en vez de minutos.
+**Resultado medido con 1,000,000 de filas** (LAYOUT completo de 55 campos):
+parseo (`construir_dataframe`, vía `pandas.read_fwf`) ~22-30s, reglas de
+negocio (`generar_reporte`) ~2s, escritura del Excel
+(`guardar_con_formato`, vía `Workbook(write_only=True)`) ~50s — **total de
+punta a punta ~75-90s**. El tiempo varía con la carga de la máquina (E/S en
+disco, otros procesos activos, etc.) y con la distribución real de los
+datos (más filas pasando los filtros de negocio implica hojas de salida
+más grandes y, por lo tanto, más tiempo de escritura).
+
+Estas cifras son notablemente más altas que la medición original de este
+proyecto (parseo 2.84s + reglas 2.22s = 5.07s total, sin escritura), porque
+el `LAYOUT` se amplió de 10 a 55 campos (ver sección 2): con 10 campos el
+bucle Python de parseo original y la escritura de `to_excel` celda por
+celda eran tolerables; con 55 campos por fila dejaron de serlo, y por eso
+se reescribieron `lector.py` (bucle Python → `pandas.read_fwf`) y
+`exportador.py` (`to_excel` → `ws.append()` con
+`Workbook(write_only=True)`) — ver secciones 2 y 6. El pipeline completo
+sigue sin usar loops en Python fila por fila para las reglas de negocio
+(pandas vectorizado); el parseo y la escritura sí iteran por fila, pero a
+través de operaciones aceleradas en C (`read_fwf`) o de bajo overhead
+(`ws.append()`) en vez de asignación campo por campo o celda por celda.
 
 ## 10. Convenciones y decisiones de diseño no obvias
 
@@ -528,7 +639,8 @@ en vez de minutos.
 - **Centralizar la conversión de `MONTO-1`**: hoy vive en una sola función
   (`_convertir_monto`), lo cual ya es más centralizado que el patrón
   repetido de "conexión directa" — se documenta aquí solo para que quede
-  explícito que si se agregan más campos numéricos al LAYOUT reducido, el
+  explícito que si se agregan más campos numéricos al LAYOUT (ej. `MONTO-2`,
+  que hoy viaja como texto sin convertir hasta el Excel de salida), el
   patrón a seguir es sumarlos a esa misma función en vez de duplicar
   conversiones dentro de `_filtrar_ep` o `generar_reporte`.
 
@@ -537,7 +649,7 @@ en vez de minutos.
 | Archivo | Responsabilidad |
 |---|---|
 | `main.py` | Menú interactivo, orquestación, estado de sesión |
-| `src/config.py` | LAYOUT reducido (10 campos), ruta de carpetas y del archivo de salida `REPORTE_EP` |
+| `src/config.py` | LAYOUT completo (55 campos), ruta de carpetas y del archivo de salida `REPORTE_EP` |
 | `src/lector.py` | Lectura del archivo plano y construcción del DataFrame crudo (todo string) |
 | `src/validador.py` | Selección de archivo(s) plano(s), extracción/confirmación del día |
 | `src/reglas.py` | Reglas de negocio del reporte EP (filtro, negativización, efecto cero) |
