@@ -81,4 +81,4 @@ CARPETA_LOGS.mkdir(exist_ok=True)
 
 ENCODING = "utf-8"
 
-REPORTE_EP = CARPETA_SALIDA / f"EP {datetime.now().strftime('%d-%m-%y')}.xlsx"
+REPORTE_EP = CARPETA_SALIDA / f"DETALLE CTA 829 {datetime.now().strftime('%d-%m-%y')}.xlsx"
