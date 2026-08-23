@@ -24,6 +24,57 @@ libro de Excel en vez de tres archivos independientes.
    resaltado, ancho de columna automático, fila de encabezado congelada y
    formato de moneda en las columnas de monto.
 
+## Arquitectura
+
+```text
+Archivos planos de ancho fijo (GOF.GRB.FM14.FYYMMDD)
+                    |
+              Lector · 55 campos por posicion absoluta
+                    |
+              Validador · estructura y consistencia
+                    |
+              Reglas de negocio · filtro red logica 0911,
+                                  negativizacion, efecto cero
+                    |
+              Exportador · openpyxl
+                    |
+   1 reporte Excel "DETALLE CTA 829"
+   Hojas: EP <fecha> · EP <fecha> VISA · EFECTO CERO
+```
+
+## Qué aporta esta versión
+
+Es la iteración de [`conexion_directa`](https://github.com/DavidCanon07/conexion_directa)
+enfocada en rendimiento y en reducir la superficie de código. El cambio que más
+pesa no es la velocidad sino la red de seguridad: esta versión incorpora una
+suite de pruebas que permite modificar una regla de negocio sin romper un reporte
+del que depende un cierre.
+
+## Pruebas
+
+```bash
+python -m pytest tests/ -v
+```
+
+| Archivo | Cubre |
+|---|---|
+| `test_lector.py` | Extracción por posición del layout |
+| `test_validador.py` | Estructura y consistencia de registros |
+| `test_reglas_filtro.py` | Filtrado por red lógica |
+| `test_reglas_efecto_cero.py` | Detección de pares que se cancelan |
+| `test_reglas_integracion.py` | Reglas encadenadas |
+| `test_exportador.py` | Escritura y formato del Excel |
+| `test_utils.py` | Utilidades compartidas |
+| `test_main_integracion.py` | Flujo completo extremo a extremo |
+
+## Rendimiento
+
+```bash
+python scripts/benchmark_rendimiento.py
+```
+
+Mide la etapa de transformación, que era el cuello de botella de la primera versión.
+
 ## Requisitos
 
 - Python 3.9+
